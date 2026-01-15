@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Flipbook Okuyucu</title>
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/dflip@1.0.12/css/dflip.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/dflip@1.0.12/css/themify-icons.min.css">
+
+    <style>
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1a1a1a;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .header {
+            padding: 20px;
+            text-align: center;
+            z-index: 10;
+        }
+
+        #file-input {
+            display: none;
+        }
+
+        .custom-file-upload {
+            border: 2px dashed #3498db;
+            display: inline-block;
+            padding: 10px 30px;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: 0.3s;
+            background: rgba(52, 152, 219, 0.1);
+        }
+
+        .custom-file-upload:hover {
+            background: #3498db;
+            color: white;
+        }
+
+        #flipbook-container {
+            width: 95%;
+            height: 80vh;
+            margin-top: 10px;
+        }
+
+        /* Kitap henüz seçilmediğinde görünecek alan */
+        .placeholder {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 60vh;
+            color: #777;
+            font-size: 1.2rem;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h2>PDF Flipbook Okuyucu</h2>
+        <label for="file-input" class="custom-file-upload">
+             📄 PDF Seç ve Okumaya Başla
+        </label>
+        <input id="file-input" type="file" accept="application/pdf" />
+    </div>
+
+    <div id="flipbook-container">
+        <div class="placeholder">Lütfen bir PDF dosyası seçin...</div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dflip@1.0.12/js/dflip.min.js"></script>
+
+    <script>
+        $(document).ready(function () {
+            $('#file-input').on('change', function (e) {
+                const file = e.target.files[0];
+                if (file && file.type === "application/pdf") {
+                    
+                    // Dosya için geçici bir URL oluştur
+                    const fileURL = URL.createObjectURL(file);
+
+                    // Konteynırı temizle
+                    $('#flipbook-container').empty();
+
+                    // Yeni bir div oluştur ve Flipbook'u başlat
+                    const flipbookDiv = $('<div id="df_book_viewer"></div>');
+                    $('#flipbook-container').append(flipbookDiv);
+
+                    const options = {
+                        source: fileURL,
+                        webgl: true,
+                        hard: "none", // Sayfaların sertlik ayarı
+                        backgroundcolor: "#1a1a1a"
+                    };
+
+                    // DearFlip kütüphanesini tetikle
+                    const dFlip = $("#df_book_viewer").df_book(options);
+                    
+                } else {
+                    alert("Lütfen geçerli bir PDF dosyası seçin.");
+                }
+            });
+        });
+    </script>
+</body>
+</html>
