@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dinamik Boyutlu Flipbook</title>
+    <title>Çift Sayfa PDF Flipbook</title>
 
     <style>
         body {
@@ -17,9 +17,12 @@
         }
 
         .nav {
-            padding: 15px;
+            padding: 10px 20px;
             background: #252525;
-            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
             border-bottom: 2px solid #3498db;
             z-index: 100;
         }
@@ -27,8 +30,8 @@
         .upload-btn {
             background: #3498db;
             color: white;
-            padding: 10px 25px;
-            border-radius: 5px;
+            padding: 8px 20px;
+            border-radius: 4px;
             cursor: pointer;
             border: none;
             font-weight: bold;
@@ -39,18 +42,19 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            padding: 20px;
-            overflow: hidden;
+            background: radial-gradient(circle, #333 0%, #1a1a1a 100%);
+            padding: 40px;
         }
 
-        /* Flipbook alanı */
         #flipbook {
             visibility: hidden;
+            box-shadow: 0 0 100px rgba(0,0,0,0.8);
         }
 
         .page {
             background-color: white;
-            box-shadow: inset 0 0 10px rgba(0,0,0,0.1);
+            box-shadow: inset 0 0 50px rgba(0,0,0,0.1);
+            overflow: hidden;
         }
 
         canvas {
@@ -62,11 +66,13 @@
         #loading {
             position: absolute;
             color: white;
-            background: rgba(0,0,0,0.8);
-            padding: 20px;
-            border-radius: 10px;
+            background: rgba(0,0,0,0.85);
+            padding: 30px;
+            border-radius: 15px;
             display: none;
             z-index: 1000;
+            text-align: center;
+            border: 1px solid #444;
         }
     </style>
 </head>
@@ -74,12 +80,12 @@
 
     <div class="nav">
         <input type="file" id="pdf-input" accept="application/pdf" style="display:none;">
-        <button class="upload-btn" onclick="document.getElementById('pdf-input').click()">📄 PDF YÜKLE</button>
-        <span id="status" style="margin-left: 15px; color: #aaa;">PDF Seçiniz</span>
+        <button class="upload-btn" onclick="document.getElementById('pdf-input').click()">📄 PDF Yükle</button>
+        <div id="status" style="color: #aaa; font-size: 14px;">Kitabınızı oluşturmak için bir dosya seçin</div>
     </div>
 
     <div id="book-container">
-        <div id="loading">Sayfalar boyutlandırılıyor ve hazırlanıyor...</div>
+        <div id="loading">📚 Sayfalar taranıyor ve kitap ciltleniyor...</div>
         <div id="flipbook"></div>
     </div>
 
@@ -107,21 +113,21 @@
             const arrayBuffer = await file.arrayBuffer();
             const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
             
-            // 1. Sayfayı baz alarak boyutları hesapla
+            // Boyutlandırma Hesabı
             const firstPage = await pdf.getPage(1);
             const originalViewport = firstPage.getViewport({ scale: 1 });
             
-            // Ekran yüksekliğine göre uygun bir ölçek hesapla (ekranın %80'ini kaplasın)
-            const screenHeight = window.innerHeight - 150;
+            // Yan yana iki sayfa olacağı için genişliği ikiyle çarpıyoruz ama 
+            // ekran yüksekliğine sığması için yüksekliği baz alıyoruz
+            const screenHeight = window.innerHeight - 180;
             const scale = screenHeight / originalViewport.height;
             
-            const finalWidth = originalViewport.width * scale;
-            const finalHeight = originalViewport.height * scale;
+            const pageWidth = originalViewport.width * scale;
+            const pageHeight = originalViewport.height * scale;
 
-            // Sayfaları Render Et
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
-                const viewport = page.getViewport({ scale: scale * 2 }); // Netlik için 2x render
+                const viewport = page.getViewport({ scale: scale * 2 }); // Netlik için 2x
                 
                 const canvas = document.createElement('canvas');
                 const context = canvas.getContext('2d');
@@ -132,29 +138,30 @@
 
                 const pageDiv = document.createElement('div');
                 pageDiv.className = 'page';
-                // Kütüphanenin sayfaları doğru tanıması için genişlik/yükseklik set ediyoruz
-                pageDiv.style.width = finalWidth + "px";
-                pageDiv.style.height = finalHeight + "px";
+                pageDiv.style.width = pageWidth + "px";
+                pageDiv.style.height = pageHeight + "px";
                 
                 pageDiv.appendChild(canvas);
                 flipbookEl.appendChild(pageDiv);
-                status.innerText = `Sayfalar hazırlandı: ${i} / ${pdf.numPages}`;
+                status.innerText = `Hazırlanan Sayfa: ${i} / ${pdf.numPages}`;
             }
 
-            // Page-Flip Kütüphanesini Dinamik Boyutlarla Başlat
             if (pageFlip) pageFlip.destroy();
 
+            // Çift Sayfa Yapılandırması
             pageFlip = new St.PageFlip(flipbookEl, {
-                width: Math.round(finalWidth),
-                height: Math.round(finalHeight),
-                size: "fixed", // Dinamik hesapladığımız boyutu koru
-                minWidth: 300,
+                width: Math.round(pageWidth),
+                height: Math.round(pageHeight),
+                size: "fixed",
+                minWidth: 200,
                 maxWidth: 2000,
-                minHeight: 400,
+                minHeight: 200,
                 maxHeight: 2000,
-                showCover: true,
+                showCover: true, // İlk sayfa kapak olsun (tek görünür)
                 drawShadow: true,
-                usePortrait: true, // Tek sayfa görünümü için
+                usePortrait: false, // ÇİFT SAYFA MODU AKTİF
+                startPage: 0,
+                flippingTime: 1000,
                 mobileScrollSupport: true
             });
 
@@ -162,7 +169,7 @@
             
             flipbookEl.style.visibility = 'visible';
             loading.style.display = 'none';
-            status.innerText = "Keyifli okumalar!";
+            status.innerText = "Kitap Hazır! Sayfaları kenarlarından tutarak çevirebilirsiniz.";
         });
     </script>
 </body>
