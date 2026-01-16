@@ -3,108 +3,82 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF Flipbook Reader</title>
+    <title>Hatasız PDF Flipbook</title>
 
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/dflip@1.0.12/css/dflip.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/dflip@1.0.12/css/themify-icons.min.css">
 
     <style>
-        body {
-            margin: 0;
-            background-color: #1a1a1a;
-            color: white;
-            font-family: sans-serif;
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-        }
-        .controls {
-            padding: 20px;
-            text-align: center;
-            background: #222;
-            border-bottom: 1px solid #333;
-        }
-        #flipbook-container {
-            flex-grow: 1;
-            width: 100%;
-            height: 80vh;
-        }
-        .btn-upload {
-            padding: 10px 25px;
-            background-color: #3498db;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-        }
-        .btn-upload:hover { background-color: #2980b9; }
+        body { margin: 0; background-color: #1a1a1a; color: white; font-family: sans-serif; height: 100vh; display: flex; flex-direction: column; }
+        .nav { padding: 15px; text-align: center; background: #222; border-bottom: 2px solid #3498db; }
+        #flipbook-wrapper { flex-grow: 1; width: 100%; height: calc(100vh - 80px); }
+        .upload-btn { background: #3498db; color: white; padding: 10px 25px; border-radius: 5px; cursor: pointer; border: none; font-weight: bold; }
+        #status-msg { margin-top: 5px; font-size: 12px; color: #888; }
     </style>
 </head>
 <body>
 
-    <div class="controls">
-        <input type="file" id="file-input" accept="application/pdf" style="display:none;">
-        <button class="btn-upload" onclick="document.getElementById('file-input').click()">
-            PDF Dosyası Seç
-        </button>
-        <p id="status" style="font-size: 12px; color: #888; margin-top: 10px;">Lütfen bir dosya seçin.</p>
+    <div class="nav">
+        <input type="file" id="pdf-input" accept="application/pdf" style="display:none;">
+        <button class="upload-btn" onclick="document.getElementById('pdf-input').click()">PDF SEÇ VE AÇ</button>
+        <div id="status-msg">Kütüphane kontrol ediliyor...</div>
     </div>
 
-    <div id="flipbook-container"></div>
+    <div id="flipbook-wrapper">
+        <div id="df_viewer"></div>
+    </div>
 
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dflip@1.0.12/js/dflip.min.js"></script>
 
     <script>
+        let myFlipbook = null;
+
+        // Kütüphanenin hazır olup olmadığını kontrol eden fonksiyon
+        function checkLibraries() {
+            if (typeof DFlip !== "undefined") {
+                document.getElementById('status-msg').innerText = "Sistem Hazır. Lütfen PDF yükleyin.";
+                return true;
+            }
+            document.getElementById('status-msg').innerText = "Kütüphane yüklenemedi! İnternet bağlantısını veya AdBlock'u kontrol edin.";
+            return false;
+        }
+
         $(document).ready(function () {
-            $('#file-input').on('change', function (e) {
+            // Başlangıçta kontrol et
+            setTimeout(checkLibraries, 1000);
+
+            $('#pdf-input').on('change', function (e) {
+                if (!checkLibraries()) return;
+
                 const file = e.target.files[0];
-                if (!file) return;
+                if (!file || file.type !== "application/pdf") return;
 
-                if (file.type !== "application/pdf") {
-                    alert("Lütfen sadece PDF dosyası seçin.");
-                    return;
-                }
-
-                document.getElementById('status').innerText = "Dosya yükleniyor: " + file.name;
-
-                // Eski flipbook varsa temizle
-                $('#flipbook-container').empty();
-
-                // Dosyayı okumak için FileReader kullanıyoruz
                 const reader = new FileReader();
                 reader.onload = function(event) {
-                    const pdfData = event.target.result;
-                    
-                    // Blob oluştur ve URL al
-                    const blob = new Blob([pdfData], { type: 'application/pdf' });
+                    const blob = new Blob([event.target.result], { type: 'application/pdf' });
                     const fileURL = URL.createObjectURL(blob);
 
-                    // Yeni Viewer oluştur
-                    const flipbookDiv = $('<div id="df_viewer"></div>');
-                    $('#flipbook-container').append(flipbookDiv);
-
-                    try {
-                        $("#df_viewer").df_book({
-                            source: fileURL,
-                            webgl: true,
-                            hard: "none",
-                            allControls: true,
-                            hideDownload: false
-                        });
-                        document.getElementById('status').innerText = "Hazır: " + file.name;
-                    } catch (err) {
-                        console.error("Flipbook başlatılamadı:", err);
-                        alert("Flipbook başlatılırken bir hata oluştu. Konsol kayıtlarını kontrol edin.");
+                    // Eğer zaten bir kitap açıksa temizle
+                    if (myFlipbook) {
+                        myFlipbook.dispose();
                     }
+                    
+                    // Önemli: Container'ı sıfırla
+                    $('#flipbook-wrapper').html('<div id="df_viewer"></div>');
+
+                    // jQuery eklentisi (.df_book) yerine doğrudan Nesne (new DFlip) oluşturuyoruz
+                    // Bu yöntem "is not a function" hatasını tamamen önler
+                    myFlipbook = new DFlip("#df_viewer", {
+                        source: fileURL,
+                        webgl: true,
+                        backgroundColor: "#1a1a1a",
+                        duration: 800
+                    });
+
+                    document.getElementById('status-msg').innerText = "Yüklendi: " + file.name;
                 };
 
-                reader.onerror = function() {
-                    alert("Dosya okunurken bir hata oluştu.");
-                };
-
-                // Dosyayı ArrayBuffer olarak oku (En güvenli yöntem)
                 reader.readAsArrayBuffer(file);
             });
         });
