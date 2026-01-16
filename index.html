@@ -3,41 +3,59 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Boyut Ayarlı PDF Flipbook</title>
+    <title>PDF Size Editor Flipbook</title>
 
     <style>
-        :root { --primary: #3498db; }
-        body { margin: 0; background-color: #1a1a1a; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        :root { --accent: #e74c3c; }
+        body { margin: 0; background-color: #121212; color: white; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
         
-        .nav {
+        /* Editör Paneli */
+        .editor-bar {
             padding: 10px 20px;
-            background: #252525;
+            background: #1f1f1f;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 25px;
-            border-bottom: 2px solid var(--primary);
-            z-index: 100;
+            gap: 15px;
+            border-bottom: 2px solid var(--accent);
+            flex-wrap: wrap;
         }
 
-        /* Zoom Kontrolü Stili */
-        .zoom-controls { display: flex; align-items: center; gap: 10px; color: white; font-size: 14px; }
-        input[type=range] { cursor: pointer; accent-color: var(--primary); }
+        .input-group { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+        
+        input[type="number"] {
+            width: 70px;
+            background: #333;
+            border: 1px solid #555;
+            color: white;
+            padding: 5px;
+            border-radius: 4px;
+        }
 
-        .upload-btn { background: var(--primary); color: white; padding: 8px 20px; border-radius: 4px; cursor: pointer; border: none; font-weight: bold; transition: 0.3s; }
-        .upload-btn:hover { background: #2980b9; }
+        .action-btn {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.2s;
+        }
+
+        .action-btn:hover { background: #c0392b; }
 
         #book-container {
             flex-grow: 1;
             display: flex;
             justify-content: center;
             align-items: center;
-            background: radial-gradient(circle, #333 0%, #1a1a1a 100%);
+            background: #121212;
             padding: 20px;
-            overflow: auto; /* Büyük boyutlarda kaydırma yapabilmek için */
+            overflow: auto;
         }
 
-        #flipbook { visibility: hidden; box-shadow: 0 0 100px rgba(0,0,0,0.8); }
+        #flipbook { visibility: hidden; }
         .page { background-color: white; overflow: hidden; }
         canvas { width: 100%; height: 100%; display: block; }
 
@@ -45,31 +63,35 @@
             position: absolute;
             color: white;
             background: rgba(0,0,0,0.9);
-            padding: 30px;
-            border-radius: 15px;
+            padding: 20px;
+            border-radius: 10px;
             display: none;
             z-index: 1000;
-            text-align: center;
         }
     </style>
 </head>
 <body>
 
-    <div class="nav">
+    <div class="editor-bar">
         <input type="file" id="pdf-input" accept="application/pdf" style="display:none;">
-        <button class="upload-btn" onclick="document.getElementById('pdf-input').click()">📄 PDF Yükle</button>
+        <button class="action-btn" style="background: #3498db;" onclick="document.getElementById('pdf-input').click()">PDF YÜKLE</button>
         
-        <div class="zoom-controls">
-            <span>Küçült</span>
-            <input type="range" id="zoom-slider" min="0.3" max="1.5" step="0.1" value="0.8">
-            <span>Büyüt</span>
+        <div class="input-group">
+            <label>Genişlik (px):</label>
+            <input type="number" id="manual-width" value="500">
         </div>
 
-        <div id="status" style="color: #aaa; font-size: 13px;">Boyutu ayarlamak için slider'ı kullanın</div>
+        <div class="input-group">
+            <label>Yükseklik (px):</label>
+            <input type="number" id="manual-height" value="700">
+        </div>
+
+        <button class="action-btn" onclick="renderFlipbook()">BOYUTU UYGULA</button>
+        <div id="status" style="color: #888; font-size: 12px; margin-left: 10px;">Değerleri değiştirip Uygula'ya basın</div>
     </div>
 
     <div id="book-container">
-        <div id="loading">Kitap hazırlanıyor...</div>
+        <div id="loading">PDF İşleniyor...</div>
         <div id="flipbook"></div>
     </div>
 
@@ -81,56 +103,70 @@
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
         let pageFlip = null;
-        let currentFileArrayBuffer = null;
+        let currentFileData = null;
 
-        // Dosya seçildiğinde
         document.getElementById('pdf-input').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
-            currentFileArrayBuffer = await file.arrayBuffer();
+
+            currentFileData = await file.arrayBuffer();
+            
+            // İlk açılışta PDF'in orijinal boyutlarını kutucuklara otomatik yaz
+            const pdf = await pdfjsLib.getDocument({data: currentFileData}).promise;
+            const firstPage = await pdf.getPage(1);
+            const viewport = firstPage.getViewport({ scale: 1 });
+            
+            document.getElementById('manual-width').value = Math.round(viewport.width);
+            document.getElementById('manual-height').value = Math.round(viewport.height);
+
             renderFlipbook();
         });
 
-        // Slider değiştiğinde yeniden oluştur
-        document.getElementById('zoom-slider').addEventListener('change', () => {
-            if (currentFileArrayBuffer) renderFlipbook();
-        });
-
         async function renderFlipbook() {
+            if (!currentFileData) {
+                alert("Önce bir PDF yüklemelisiniz!");
+                return;
+            }
+
             const loading = document.getElementById('loading');
             const flipbookEl = document.getElementById('flipbook');
-            const zoomValue = parseFloat(document.getElementById('zoom-slider').value);
             
+            // Kullanıcının girdiği manuel boyutlar
+            const targetWidth = parseInt(document.getElementById('manual-width').value);
+            const targetHeight = parseInt(document.getElementById('manual-height').value);
+
             loading.style.display = 'block';
             flipbookEl.innerHTML = '';
             flipbookEl.style.visibility = 'hidden';
 
-            const pdf = await pdfjsLib.getDocument({data: currentFileArrayBuffer}).promise;
-            const firstPage = await pdf.getPage(1);
-            const originalViewport = firstPage.getViewport({ scale: 1 });
-            
-            // Slider'dan gelen değere göre boyut hesapla
-            const screenBase = window.innerHeight * zoomValue;
-            const scale = screenBase / originalViewport.height;
-            
-            const pageWidth = originalViewport.width * scale;
-            const pageHeight = originalViewport.height * scale;
+            const pdf = await pdfjsLib.getDocument({data: currentFileData}).promise;
 
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
-                const viewport = page.getViewport({ scale: scale * 1.5 }); // Netlik dengesi
                 
+                // Sayfayı kullanıcının istediği boyutlara uyması için scale ediyoruz
+                const viewportOrijinal = page.getViewport({ scale: 1 });
+                const scaleX = targetWidth / viewportOrijinal.width;
+                const scaleY = targetHeight / viewportOrijinal.height;
+                
+                // Netlik için render'ı yüksek tutuyoruz (2x)
                 const canvas = document.createElement('canvas');
                 const context = canvas.getContext('2d');
-                canvas.height = viewport.height;
-                canvas.width = viewport.width;
+                canvas.width = targetWidth * 2;
+                canvas.height = targetHeight * 2;
 
-                await page.render({ canvasContext: context, viewport: viewport }).promise;
+                const renderContext = {
+                    canvasContext: context,
+                    viewport: page.getViewport({ scale: Math.max(scaleX, scaleY) * 2 }),
+                    transform: [scaleX * 2, 0, 0, scaleY * 2, 0, 0] // Manuel boyutlandırma transformu
+                };
+
+                await page.render(renderContext).promise;
 
                 const pageDiv = document.createElement('div');
                 pageDiv.className = 'page';
-                pageDiv.style.width = pageWidth + "px";
-                pageDiv.style.height = pageHeight + "px";
+                pageDiv.style.width = targetWidth + "px";
+                pageDiv.style.height = targetHeight + "px";
                 
                 pageDiv.appendChild(canvas);
                 flipbookEl.appendChild(pageDiv);
@@ -139,8 +175,8 @@
             if (pageFlip) pageFlip.destroy();
 
             pageFlip = new St.PageFlip(flipbookEl, {
-                width: Math.round(pageWidth),
-                height: Math.round(pageHeight),
+                width: targetWidth,
+                height: targetHeight,
                 size: "fixed",
                 showCover: true,
                 drawShadow: true,
