@@ -3,84 +3,155 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hatasız PDF Flipbook</title>
-
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/dflip@1.0.12/css/dflip.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/dflip@1.0.12/css/themify-icons.min.css">
-
+    <title>Güvenli PDF Flipbook</title>
     <style>
-        body { margin: 0; background-color: #1a1a1a; color: white; font-family: sans-serif; height: 100vh; display: flex; flex-direction: column; }
-        .nav { padding: 15px; text-align: center; background: #222; border-bottom: 2px solid #3498db; }
-        #flipbook-wrapper { flex-grow: 1; width: 100%; height: calc(100vh - 80px); }
-        .upload-btn { background: #3498db; color: white; padding: 10px 25px; border-radius: 5px; cursor: pointer; border: none; font-weight: bold; }
-        #status-msg { margin-top: 5px; font-size: 12px; color: #888; }
+        :root { --primary: #3498db; --bg: #1a1a1a; }
+        body { margin: 0; background: var(--bg); color: white; font-family: sans-serif; overflow: hidden; }
+        
+        /* Navigasyon Paneli */
+        .top-bar {
+            height: 60px;
+            background: #252525;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            gap: 15px;
+            border-bottom: 2px solid var(--primary);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+
+        .btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.2s;
+        }
+
+        .btn:hover { opacity: 0.8; }
+
+        /* Kitap Alanı */
+        #viewer-container {
+            width: 100%;
+            height: calc(100vh - 62px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #pdf-render {
+            max-width: 90%;
+            max-height: 90%;
+            box-shadow: 0 0 50px rgba(0,0,0,0.7);
+            border: 5px solid #333;
+            background: white;
+            cursor: pointer;
+        }
+
+        .page-info { font-size: 14px; color: #aaa; }
     </style>
 </head>
 <body>
 
-    <div class="nav">
-        <input type="file" id="pdf-input" accept="application/pdf" style="display:none;">
-        <button class="upload-btn" onclick="document.getElementById('pdf-input').click()">PDF SEÇ VE AÇ</button>
-        <div id="status-msg">Kütüphane kontrol ediliyor...</div>
+    <div class="top-bar">
+        <input type="file" id="upload" accept="application/pdf" style="display:none">
+        <button class="btn" onclick="document.getElementById('upload').click()">PDF SEÇ</button>
+        <button class="btn" id="prev">Geri</button>
+        <button class="btn" id="next">İleri</button>
+        <span class="page-info">Sayfa: <span id="page-num">0</span> / <span id="page-count">0</span></span>
     </div>
 
-    <div id="flipbook-wrapper">
-        <div id="df_viewer"></div>
+    <div id="viewer-container">
+        <canvas id="pdf-render"></canvas>
     </div>
 
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/dflip@1.0.12/js/dflip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
 
     <script>
-        let myFlipbook = null;
+        const pdfjsLib = window['pdfjs-dist/build/pdf'];
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
-        // Kütüphanenin hazır olup olmadığını kontrol eden fonksiyon
-        function checkLibraries() {
-            if (typeof DFlip !== "undefined") {
-                document.getElementById('status-msg').innerText = "Sistem Hazır. Lütfen PDF yükleyin.";
-                return true;
-            }
-            document.getElementById('status-msg').innerText = "Kütüphane yüklenemedi! İnternet bağlantısını veya AdBlock'u kontrol edin.";
-            return false;
-        }
+        let pdfDoc = null,
+            pageNum = 1,
+            pageIsRendering = false,
+            pageNumIsPending = null;
 
-        $(document).ready(function () {
-            // Başlangıçta kontrol et
-            setTimeout(checkLibraries, 1000);
+        const canvas = document.querySelector('#pdf-render'),
+              ctx = canvas.getContext('2d');
 
-            $('#pdf-input').on('change', function (e) {
-                if (!checkLibraries()) return;
+        // Sayfayı Çiz
+        const renderPage = num => {
+            pageIsRendering = true;
+            pdfDoc.getPage(num).then(page => {
+                const viewport = page.getViewport({ scale: 1.5 });
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
 
-                const file = e.target.files[0];
-                if (!file || file.type !== "application/pdf") return;
-
-                const reader = new FileReader();
-                reader.onload = function(event) {
-                    const blob = new Blob([event.target.result], { type: 'application/pdf' });
-                    const fileURL = URL.createObjectURL(blob);
-
-                    // Eğer zaten bir kitap açıksa temizle
-                    if (myFlipbook) {
-                        myFlipbook.dispose();
-                    }
-                    
-                    // Önemli: Container'ı sıfırla
-                    $('#flipbook-wrapper').html('<div id="df_viewer"></div>');
-
-                    // jQuery eklentisi (.df_book) yerine doğrudan Nesne (new DFlip) oluşturuyoruz
-                    // Bu yöntem "is not a function" hatasını tamamen önler
-                    myFlipbook = new DFlip("#df_viewer", {
-                        source: fileURL,
-                        webgl: true,
-                        backgroundColor: "#1a1a1a",
-                        duration: 800
-                    });
-
-                    document.getElementById('status-msg').innerText = "Yüklendi: " + file.name;
+                const renderCtx = {
+                    canvasContext: ctx,
+                    viewport
                 };
 
-                reader.readAsArrayBuffer(file);
+                page.render(renderCtx).promise.then(() => {
+                    pageIsRendering = false;
+                    if (pageNumIsPending !== null) {
+                        renderPage(pageNumIsPending);
+                        pageNumIsPending = null;
+                    }
+                });
+
+                document.querySelector('#page-num').textContent = num;
             });
+        };
+
+        const queueRenderPage = num => {
+            if (pageIsRendering) {
+                pageNumIsPending = num;
+            } else {
+                renderPage(num);
+            }
+        };
+
+        // Navigasyon
+        document.querySelector('#prev').addEventListener('click', () => {
+            if (pageNum <= 1) return;
+            pageNum--;
+            queueRenderPage(pageNum);
+        });
+
+        document.querySelector('#next').addEventListener('click', () => {
+            if (pageNum >= pdfDoc.numPages) return;
+            pageNum++;
+            queueRenderPage(pageNum);
+        });
+
+        // Dosya Yükleme
+        document.querySelector('#upload').addEventListener('change', e => {
+            const file = e.target.files[0];
+            if (file.type !== 'application/pdf') return;
+
+            const reader = new FileReader();
+            reader.onload = function() {
+                const typedarray = new Uint8Array(this.result);
+
+                pdfjsLib.getDocument(typedarray).promise.then(pdfDoc_ => {
+                    pdfDoc = pdfDoc_;
+                    document.querySelector('#page-count').textContent = pdfDoc.numPages;
+                    renderPage(pageNum);
+                });
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        // Canvas'a tıklandığında sonraki sayfaya geç (Kitap hissi)
+        canvas.addEventListener('click', () => {
+            if (pageNum < pdfDoc.numPages) {
+                pageNum++;
+                queueRenderPage(pageNum);
+            }
         });
     </script>
 </body>
