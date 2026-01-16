@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Flipbook Reader</title>
+    <title>Dinamik Boyutlu Flipbook</title>
 
     <style>
         body {
@@ -18,10 +18,10 @@
 
         .nav {
             padding: 15px;
-            background: #222;
+            background: #252525;
             text-align: center;
             border-bottom: 2px solid #3498db;
-            z-index: 10;
+            z-index: 100;
         }
 
         .upload-btn {
@@ -40,29 +40,33 @@
             justify-content: center;
             align-items: center;
             padding: 20px;
+            overflow: hidden;
         }
 
-        /* Sayfa Çevirme Alanı */
+        /* Flipbook alanı */
         #flipbook {
-            box-shadow: 0 0 50px rgba(0,0,0,0.8);
-            visibility: hidden; /* Yüklenene kadar gizle */
+            visibility: hidden;
         }
 
         .page {
             background-color: white;
-            width: 100%;
-            height: 100%;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.1);
         }
 
         canvas {
             width: 100%;
             height: 100%;
+            display: block;
         }
 
         #loading {
             position: absolute;
             color: white;
+            background: rgba(0,0,0,0.8);
+            padding: 20px;
+            border-radius: 10px;
             display: none;
+            z-index: 1000;
         }
     </style>
 </head>
@@ -70,12 +74,12 @@
 
     <div class="nav">
         <input type="file" id="pdf-input" accept="application/pdf" style="display:none;">
-        <button class="upload-btn" onclick="document.getElementById('pdf-input').click()">📄 PDF YÜKLE (Animasyonlu)</button>
-        <span id="page-info" style="margin-left: 15px; color: #aaa;"></span>
+        <button class="upload-btn" onclick="document.getElementById('pdf-input').click()">📄 PDF YÜKLE</button>
+        <span id="status" style="margin-left: 15px; color: #aaa;">PDF Seçiniz</span>
     </div>
 
     <div id="book-container">
-        <div id="loading">Sayfalar hazırlanıyor, lütfen bekleyin...</div>
+        <div id="loading">Sayfalar boyutlandırılıyor ve hazırlanıyor...</div>
         <div id="flipbook"></div>
     </div>
 
@@ -92,19 +96,32 @@
             const file = e.target.files[0];
             if (!file) return;
 
-            document.getElementById('loading').style.display = 'block';
-            document.getElementById('flipbook').innerHTML = '';
-            document.getElementById('flipbook').style.visibility = 'hidden';
+            const loading = document.getElementById('loading');
+            const flipbookEl = document.getElementById('flipbook');
+            const status = document.getElementById('status');
+            
+            loading.style.display = 'block';
+            flipbookEl.innerHTML = '';
+            flipbookEl.style.visibility = 'hidden';
 
             const arrayBuffer = await file.arrayBuffer();
             const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
             
-            const flipbookEl = document.getElementById('flipbook');
+            // 1. Sayfayı baz alarak boyutları hesapla
+            const firstPage = await pdf.getPage(1);
+            const originalViewport = firstPage.getViewport({ scale: 1 });
+            
+            // Ekran yüksekliğine göre uygun bir ölçek hesapla (ekranın %80'ini kaplasın)
+            const screenHeight = window.innerHeight - 150;
+            const scale = screenHeight / originalViewport.height;
+            
+            const finalWidth = originalViewport.width * scale;
+            const finalHeight = originalViewport.height * scale;
 
-            // Tüm sayfaları render et (Görsel olarak)
+            // Sayfaları Render Et
             for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
-                const viewport = page.getViewport({ scale: 1.5 });
+                const viewport = page.getViewport({ scale: scale * 2 }); // Netlik için 2x render
                 
                 const canvas = document.createElement('canvas');
                 const context = canvas.getContext('2d');
@@ -115,25 +132,37 @@
 
                 const pageDiv = document.createElement('div');
                 pageDiv.className = 'page';
+                // Kütüphanenin sayfaları doğru tanıması için genişlik/yükseklik set ediyoruz
+                pageDiv.style.width = finalWidth + "px";
+                pageDiv.style.height = finalHeight + "px";
+                
                 pageDiv.appendChild(canvas);
                 flipbookEl.appendChild(pageDiv);
+                status.innerText = `Sayfalar hazırlandı: ${i} / ${pdf.numPages}`;
             }
 
-            // Page-Flip Kütüphanesini Başlat
+            // Page-Flip Kütüphanesini Dinamik Boyutlarla Başlat
             if (pageFlip) pageFlip.destroy();
 
             pageFlip = new St.PageFlip(flipbookEl, {
-                width: 550, // sayfa genişliği
-                height: 750, // sayfa yüksekliği
+                width: Math.round(finalWidth),
+                height: Math.round(finalHeight),
+                size: "fixed", // Dinamik hesapladığımız boyutu koru
+                minWidth: 300,
+                maxWidth: 2000,
+                minHeight: 400,
+                maxHeight: 2000,
                 showCover: true,
                 drawShadow: true,
-                maxShadowOpacity: 0.5
+                usePortrait: true, // Tek sayfa görünümü için
+                mobileScrollSupport: true
             });
 
             pageFlip.loadFromHTML(document.querySelectorAll('.page'));
             
-            document.getElementById('flipbook').style.visibility = 'visible';
-            document.getElementById('loading').style.display = 'none';
+            flipbookEl.style.visibility = 'visible';
+            loading.style.display = 'none';
+            status.innerText = "Keyifli okumalar!";
         });
     </script>
 </body>
